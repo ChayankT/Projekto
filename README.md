@@ -120,3 +120,5 @@ the full keyboard shortcut list.
 ## DEMO
 
 -LINK: https://projekto-flax.vercel.app/
+-VIDEO: https://drive.google.com/file/d/1AyE57Rr0F3atSz_MTbVjyaLGBWOErPwO/view?usp=drive_link
+NOTE: At 11:03, I meant to say "authentication" but slipped up and said "authorization" instead.
