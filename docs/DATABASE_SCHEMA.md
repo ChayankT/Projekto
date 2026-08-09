@@ -33,6 +33,7 @@ MongoDB is the datastore, accessed through Mongoose.
   startDate: Date,
   endDate: Date,
   status: [planned|active|completed],
+  capacity: Number (nullable, min: 0 — team capacity in story points; null means "not set", distinct from a deliberate 0. Compared against the sum of the sprint's stories' storyPoints to flag over-commitment in the UI),
   timestamps: true
 }
 ```
