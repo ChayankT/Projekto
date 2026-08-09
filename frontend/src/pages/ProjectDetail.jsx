@@ -97,7 +97,17 @@ const ProjectDetail = () => {
 
     // Clicking a tag chip (on the filter bar or on a story card) toggles it:
     // selecting the already-active tag clears the filter instead of no-op'ing.
-    const toggleTagFilter = (tag) => setTagFilter(prev => (prev === tag ? '' : tag));
+    // The chip list (allTags, above) is built from every story in the
+    // project, but the board itself defaults to "Backlog only" — so most
+    // tags (which usually belong to stories already pulled into a sprint)
+    // would filter the board down to nothing, making the filter look
+    // broken. Activating a tag filter widens the sprint scope to "Any
+    // sprint" so the matching stories actually show up.
+    const toggleTagFilter = (tag) => setTagFilter(prev => {
+        const next = prev === tag ? '' : tag;
+        if (next && sprintFilter === 'backlog') setSprintFilter('all');
+        return next;
+    });
 
     useEffect(() => { setStoriesState(buildColumns(visibleStories)); }, [visibleStories]);
 
