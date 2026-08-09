@@ -13,7 +13,7 @@ Base URL: `http://localhost:5000`
 | GET/POST | `/api/tasks?story=X&archived=Y` | List tasks, optionally by story; `archived=true` returns only archived tasks, `archived=all` returns both, otherwise only non-archived (default) / create a task |
 | GET/PUT/DELETE | `/api/tasks/:id` | Fetch, update (also how a task is archived/restored, via `{ archived: true|false }`), or permanently remove one task |
 | GET/POST | `/api/sprints?project=X` | List sprints, optionally by project / create a sprint |
-| GET/PUT/DELETE | `/api/sprints/:id` | Fetch a sprint (with its stories) / update (also how a sprint is started or completed, via the `status` field) / delete (its stories move back to the backlog rather than being deleted) |
+| GET/PUT/DELETE | `/api/sprints/:id` | Fetch a sprint (with its stories) / update (also how a sprint is started or completed, via the `status` field, and how its `capacity` — team capacity in story points — is set or cleared) / delete (its stories move back to the backlog rather than being deleted) |
 | GET | `/api/sprints/:id/burndown` | Ideal-vs-actual TASK-completion burndown series for a sprint (totals/percentage plus a day-by-day series of remaining tasks). The ideal line is weekend-aware: it only decreases on weekdays and holds flat across Saturday/Sunday. |
 | GET | `/api/sprints/velocity/:projectId` | Completed-points velocity across a project's completed sprints |
 | GET | `/api/notifications?user=X` | Fetch a user's notifications |
