@@ -13,6 +13,7 @@ const storyRoutes = require('./routes/stories');
 const taskRoutes = require('./routes/tasks');
 const notificationRoutes = require('./routes/notifications');
 const sprintRoutes = require('./routes/sprints');
+const commentRoutes = require('./routes/comments');
 
 const app = express();
 
@@ -30,6 +31,7 @@ app.use('/api/stories', storyRoutes);
 app.use('/api/tasks', taskRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/sprints', sprintRoutes);
+app.use('/api/comments', commentRoutes);
 
 // ─── Health Check ─────────────────────────────────────────────────────────────
 app.get('/health', (req, res) => res.json({ status: 'ok', time: new Date().toISOString() }));
