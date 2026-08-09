@@ -20,8 +20,14 @@ Base URL: `http://localhost:5000`
 | GET | `/api/notifications/unread-count?user=X` | Fetch a user's unread notification count |
 | PUT | `/api/notifications/:id/read` | Mark a single notification as read |
 | PUT | `/api/notifications/mark-all-read` | Mark every notification for a user as read |
+| GET/POST | `/api/comments?entityType=X&entityId=Y` | List comments on a story or task (`entityType` is `story` or `task`), oldest first / add a comment (`{ entityType, entityId, author, body }`) — `404`s if the target story/task doesn't exist |
+| DELETE | `/api/comments/:id` | Delete a comment |
 | GET | `/api-docs` | Swagger UI |
 
 The full interactive API reference is served by Swagger UI at **http://localhost:5000/api-docs** whenever the backend is running.
 
 Creating or editing a sprint, story, or task into a non-completed state also **reopens** anything closed above it in the hierarchy — a `completed` sprint/project, or an `archived` project — the mirror of the completion cascade described in `ARCHITECTURE_OVERVIEW.md`.
+
+**Notification triggers.** Beyond the overdue-task cron job, three mutations now create `Notification` documents directly in their route handlers:
+- Assigning (or reassigning) a story or task — `POST`/`PUT` on `/api/stories` and `/api/tasks` — notifies the new assignee. Only fires when the assignee actually changes (diffed against the previous value), not on every edit that happens to include the same assignee, and not on the status-only updates that drag-and-drop and archive/restore send.
+- Starting or completing a sprint — `PUT /api/sprints/:id` with `{ status: 'active' }` or `{ status: 'completed' }` — notifies everyone assigned to a story or task in that sprint. Only fires on an actual status *transition* (diffed against the sprint's previous status), not on unrelated edits made while it already happens to be in that status.
