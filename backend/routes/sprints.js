@@ -201,6 +201,9 @@ router.get('/velocity/:projectId', async (req, res) => {
  *                 type: string
  *               endDate:
  *                 type: string
+ *               capacity:
+ *                 type: number
+ *                 description: Team capacity for the sprint, in story points
  *     responses:
  *       201:
  *         description: Created sprint
@@ -209,6 +212,9 @@ router.post('/', async (req, res) => {
     try {
         if (req.body.startDate && req.body.endDate && new Date(req.body.endDate) <= new Date(req.body.startDate)) {
             return res.status(400).json({ message: 'End date must be after start date' });
+        }
+        if (req.body.capacity !== undefined && req.body.capacity !== null && req.body.capacity !== '' && Number(req.body.capacity) < 0) {
+            return res.status(400).json({ message: 'Capacity cannot be negative' });
         }
         const sprint = new Sprint(req.body);
         const saved = await sprint.save();
@@ -233,6 +239,9 @@ router.put('/:id', async (req, res) => {
     try {
         if (req.body.startDate && req.body.endDate && new Date(req.body.endDate) <= new Date(req.body.startDate)) {
             return res.status(400).json({ message: 'End date must be after start date' });
+        }
+        if (req.body.capacity !== undefined && req.body.capacity !== null && req.body.capacity !== '' && Number(req.body.capacity) < 0) {
+            return res.status(400).json({ message: 'Capacity cannot be negative' });
         }
         const updated = await Sprint.findByIdAndUpdate(req.params.id, req.body, {
             new: true,
