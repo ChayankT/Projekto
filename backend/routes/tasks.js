@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const Task = require('../models/Task');
 const UserStory = require('../models/UserStory');
+const Notification = require('../models/Notification');
 const { reopenStoryHierarchy } = require('../utils/cascadeUp');
 
 /**
@@ -129,6 +130,16 @@ router.post('/', async (req, res) => {
             await reopenStoryHierarchy(story, { includeStory: true });
         }
 
+        // Being assigned a brand-new task is still an assignment — notify
+        // the assignee the same way an assignment *change* would (below).
+        if (saved.assignee) {
+            await Notification.create({
+                user: saved.assignee,
+                taskId: saved._id,
+                message: `📌 You were assigned to task "${saved.title}".`,
+            });
+        }
+
         const populated = await Task.findById(saved._id)
             .populate('story', 'title')
             .populate('assignee', 'name email');
@@ -170,6 +181,14 @@ router.put('/:id', async (req, res) => {
         } else if (payload.status) {
             payload.completedAt = null;
         }
+
+        // Read the current assignee before the update so we can tell
+        // whether this request actually *changed* it (vs. just re-sending
+        // the same value, or editing an unrelated field).
+        const existing = await Task.findById(req.params.id, 'assignee');
+        if (!existing) return res.status(404).json({ message: 'Task not found' });
+        const previousAssignee = existing.assignee ? existing.assignee.toString() : null;
+
         const updated = await Task.findByIdAndUpdate(req.params.id, payload, {
             new: true,
             runValidators: true,
@@ -177,6 +196,21 @@ router.put('/:id', async (req, res) => {
             .populate('story', 'title')
             .populate('assignee', 'name email');
         if (!updated) return res.status(404).json({ message: 'Task not found' });
+
+        // Notify the newly-assigned person — only when this request
+        // actually changed the assignee to someone new, not on every save
+        // that happens to include the same assignee.
+        if (
+            Object.prototype.hasOwnProperty.call(payload, 'assignee') &&
+            updated.assignee &&
+            updated.assignee._id.toString() !== previousAssignee
+        ) {
+            await Notification.create({
+                user: updated.assignee._id,
+                taskId: updated._id,
+                message: `📌 You were assigned to task "${updated.title}".`,
+            });
+        }
 
         // Editing a task into (or leaving it in) a non-completed state means
         // there's active work again — walk up the hierarchy (task -> story
