@@ -3,7 +3,7 @@
 ## ⚡ Projekto — Agile Project Management Tool
 
 A full-stack app for running agile projects on small teams (roughly 3–10 people).
-Work is organized as **Project → Sprint → User Story → Task**, tracked on a drag-and-drop Kanban board, with sprint planning via story points, a task-completion-based ideal-vs-actual burndown chart, per-sprint velocity (still points-based), and background notifications for overdue work.
+Work is organized as **Project → Sprint → User Story → Task**, tracked on a drag-and-drop Kanban board with per-story/task comment threads, sprint planning via story points, a task-completion-based ideal-vs-actual burndown chart, per-sprint velocity (still points-based), and notifications for overdue work, assignments, and sprint start/complete.
 
 ## ✅ Completion Cascades Down the Hierarchy
 
@@ -40,7 +40,7 @@ There's no websocket/live-update layer (see `FUTURE_IMPROVEMENTS.md`) — every 
 - **Projects** (`/projects`, `/projects/:id`) — the project list, plus a drag-and-drop Kanban board (built with `@hello-pangea/dnd`) for a project's stories.
 - **Sprint Detail** (`/projects/:id/sprints/:sprintId`) — a single sprint's drag-and-drop board plus its task-based burndown chart and task-completion totals (not story points — see "Sprints & Burndown" below). Each column also has its own "+" (and a click-to-add empty state) for creating a brand-new story straight into that column and this sprint, the same pattern used on the project backlog board and a story's task board. Separately, an "Add Story" action lets you pull any of the project's uncompleted *existing* stories into the sprint directly from here — whether they're currently sitting in the backlog or in a different sprint — instead of needing to open each story individually from the project board to change its sprint field.
 - **Calendar** (`/calendar`) — a calendar view organized around due dates.
-- **Story Detail** (`/stories/:id`) — a story broken down into its tasks.
+- **Story Detail** (`/stories/:id`) — a story broken down into its tasks, plus a comment thread on the story itself; each task's edit dialog has its own comment thread too.
 - **Notifications** (`/notifications`) — overdue-task alerts, with the ability to mark them read or dismiss them.
 - **Team** (`/team`) — where users are managed.
 - **Archive** (`/archive`) — archived projects, stories, and tasks, each restorable or permanently deletable from their own tab.
@@ -83,7 +83,22 @@ Each `UserStory` carries a `storyPoints` value and an optional link to a `sprint
 - `Sprint` carries an optional `capacity` (story points, nullable — null means "not set"). It's set when planning a sprint, or edited later from the Sprint Detail page. The UI compares it against the sum of `storyPoints` across the sprint's stories ("committed points") and surfaces a warning — an "Over capacity" badge on the project's sprint cards, and a red points-committed stat plus an over-capacity badge on the Sprint Detail page — whenever committed points exceed capacity. This is a UI-only warning: the backend does not reject or otherwise block over-committing a sprint.
 - Deleting a sprint doesn't delete its stories — they fall back into the backlog (`sprint` is set to `null`). Deleting a project, by contrast, cascades and removes its sprints and stories along with it.
 
-## ⚙ Async Background Workflow
+## 💬 Comments
+
+Stories and tasks can each carry a comment thread — the only place in the app where more than one person can leave free-text context on *why* something moved or changed, since there's no activity/audit log (see `FUTURE_IMPROVEMENTS.md`).
+
+- `Comment` is deliberately polymorphic (`entityType: 'story'|'task'` + `entityId`) rather than two separate collections, since stories and tasks need identical comment behavior — one model and one route file (`backend/routes/comments.js`) covers both.
+- Comments are simple on purpose: chronological (oldest first), no editing, no nested replies/threads, no rich text or attachments. Anyone can delete any comment (no author check) — consistent with the rest of the app's no-auth MVP posture (see `DESIGN_DECISIONS.md`).
+- On the frontend, `CommentsSection` (`frontend/src/components/CommentsSection.jsx`) is the one reusable component for both surfaces: mounted directly on the Story Detail page for the story itself, and inside the task Edit dialog (only when editing an existing task — a task being created doesn't exist yet to comment on).
+
+## ⚙ Notifications
+
+Beyond the overdue-task cron job below, three other mutations create `Notification` documents directly in their route handlers, reusing the same generic model (`message` + optional `taskId`) rather than adding new schema:
+
+- **Assignment** — assigning or reassigning a story or task (`POST`/`PUT /api/stories`, `POST`/`PUT /api/tasks`) notifies the new assignee, e.g. `📌 You were assigned to task "Fix login bug".` Fires only when the assignee actually changes (each handler reads the previous assignee before updating and diffs against it), so it doesn't fire on drag-and-drop status moves, archive/restore, or an edit that happens to resend the same assignee.
+- **Sprint start/complete** — `PUT /api/sprints/:id` with `{ status: 'active' }` or `{ status: 'completed' }` notifies everyone assigned to a story or task in that sprint, e.g. `🚀 Sprint "Sprint 4" has started.` / `✅ Sprint "Sprint 4" has completed.` Like assignment, this diffs against the sprint's previous status first, so it only fires on an actual transition, not on unrelated edits (name, goal, capacity) made while the sprint already happens to be `active`/`completed`. Since a sprint isn't a `Task`, these notifications carry `taskId: null` — the model's `taskId` was already nullable/generic enough not to need a schema change.
+
+## ⏰ Async Background Workflow: the Overdue-Task Notifier
 
 File: `backend/jobs/overdueNotifier.js`
 
