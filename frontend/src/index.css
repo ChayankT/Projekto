@@ -2224,6 +2224,23 @@ select {
   border-color: rgba(91, 159, 201, 0.12);
 }
 
+.add-story-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface-1);
+  border: 1px solid var(--border-default);
+  cursor: pointer;
+  transition: all var(--duration-fast);
+}
+
+.add-story-row:hover {
+  background: var(--bg-surface-2);
+  border-color: var(--border-strong);
+}
+
 .notif-dot {
   width: 8px;
   height: 8px;
