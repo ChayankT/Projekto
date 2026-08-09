@@ -1,13 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
-import { getSprint, getSprintBurndown, updateSprint, updateStory } from '../api/client';
+import { getSprint, getSprintBurndown, updateSprint, updateStory, getStories } from '../api/client';
 import { useToast } from '../context/ToastContext';
 import { useDataSync } from '../context/DataSyncContext';
-import { Badge, Skeleton, Card } from '../components/ui';
+import { Badge, Skeleton, Card, Dialog, EmptyState } from '../components/ui';
 import BurndownChart from '../components/BurndownChart';
 import { motion } from 'framer-motion';
-import { ChevronRight, Target, Calendar, Play, CheckCircle2, TrendingDown, Layers, LogIn, ListChecks, ChevronDown, ChevronUp } from 'lucide-react';
+import { ChevronRight, Target, Calendar, Play, CheckCircle2, TrendingDown, Layers, LogIn, ListChecks, ChevronDown, ChevronUp, Plus } from 'lucide-react';
 
 const STATUS = ['active', 'in_progress', 'completed'];
 const STATUS_LABELS = { active: 'Active', in_progress: 'In Progress', completed: 'Completed' };
@@ -35,6 +35,11 @@ const SprintDetail = () => {
     const [burndown, setBurndown] = useState(null);
     const [loading, setLoading] = useState(true);
     const [expandedCols, setExpandedCols] = useState({});
+    const [showAddStory, setShowAddStory] = useState(false);
+    const [eligibleStories, setEligibleStories] = useState([]);
+    const [loadingEligible, setLoadingEligible] = useState(false);
+    const [selectedStoryIds, setSelectedStoryIds] = useState([]);
+    const [addingStories, setAddingStories] = useState(false);
 
     const toggleExpanded = (colId) => setExpandedCols(prev => ({ ...prev, [colId]: !prev[colId] }));
 
@@ -115,6 +120,49 @@ const SprintDetail = () => {
         }
     };
 
+    // Any story in the project that isn't already in this sprint and isn't
+    // completed — completed work doesn't belong in sprint planning, but
+    // that's the only restriction: an active/in-progress story sitting in
+    // the backlog *or* in a different sprint is fair game to pull in here.
+    const openAddStory = async () => {
+        setShowAddStory(true);
+        setSelectedStoryIds([]);
+        setLoadingEligible(true);
+        try {
+            const res = await getStories(id);
+            const eligible = res.data.filter(s =>
+                s.status !== 'completed' && (s.sprint?._id || s.sprint) !== sprintId
+            );
+            setEligibleStories(eligible);
+        } catch {
+            addToast('Failed to load stories', 'error');
+        } finally {
+            setLoadingEligible(false);
+        }
+    };
+
+    const toggleSelected = (storyId) => {
+        setSelectedStoryIds(prev =>
+            prev.includes(storyId) ? prev.filter(sid => sid !== storyId) : [...prev, storyId]
+        );
+    };
+
+    const handleAddStories = async () => {
+        if (selectedStoryIds.length === 0) return;
+        setAddingStories(true);
+        try {
+            await Promise.all(selectedStoryIds.map(sid => updateStory(sid, { sprint: sprintId })));
+            addToast(`${selectedStoryIds.length} ${selectedStoryIds.length === 1 ? 'story' : 'stories'} added to sprint`);
+            setShowAddStory(false);
+            notifyStoriesChanged();
+            load();
+        } catch {
+            addToast('Failed to add stories to sprint', 'error');
+        } finally {
+            setAddingStories(false);
+        }
+    };
+
     if (loading) return (
         <div style={{ padding: 'var(--space-8)' }}>
             <Skeleton variant="text" width="160px" />
@@ -161,6 +209,11 @@ const SprintDetail = () => {
                     </p>
                 </div>
                 <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+                    {sprint.status !== 'completed' && (
+                        <button className="btn btn-secondary" onClick={openAddStory}>
+                            <Plus size={15} /> Add Story
+                        </button>
+                    )}
                     {sprint.status === 'planned' && (
                         <button className="btn btn-primary" onClick={() => setSprintStatus('active')}>
                             <Play size={15} /> Start Sprint
@@ -298,6 +351,66 @@ const SprintDetail = () => {
                     </p>
                 )}
             </Card>
+
+            {/* Add Story Dialog */}
+            <Dialog
+                open={showAddStory}
+                title="Add Story to Sprint"
+                onClose={() => setShowAddStory(false)}
+                footer={<>
+                    <button className="btn btn-secondary" onClick={() => setShowAddStory(false)}>Cancel</button>
+                    <button
+                        className="btn btn-primary"
+                        onClick={handleAddStories}
+                        disabled={selectedStoryIds.length === 0 || addingStories}
+                    >
+                        {addingStories
+                            ? 'Adding…'
+                            : `Add ${selectedStoryIds.length > 0 ? selectedStoryIds.length : ''} ${selectedStoryIds.length === 1 ? 'Story' : 'Stories'}`}
+                    </button>
+                </>}
+            >
+                {loadingEligible ? (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+                        {[1, 2, 3].map(i => <Skeleton key={i} variant="card" height={56} />)}
+                    </div>
+                ) : eligibleStories.length === 0 ? (
+                    <EmptyState
+                        icon="📋"
+                        title="No stories available"
+                        description="Every uncompleted story in this project is either already in this sprint or there aren't any yet."
+                    />
+                ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)', maxHeight: 360, overflowY: 'auto' }}>
+                        {eligibleStories.map(story => (
+                            <label
+                                key={story._id}
+                                className="add-story-row"
+                            >
+                                <input
+                                    type="checkbox"
+                                    checked={selectedStoryIds.includes(story._id)}
+                                    onChange={() => toggleSelected(story._id)}
+                                />
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                    <div style={{ fontSize: 'var(--text-sm)', fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                        {story.title}
+                                    </div>
+                                    <div style={{ display: 'flex', gap: 'var(--space-1_5)', marginTop: 'var(--space-1)', alignItems: 'center' }}>
+                                        <Badge variant={story.priority}>{story.priority}</Badge>
+                                        <Badge variant="info">{story.storyPoints ?? 0} pts</Badge>
+                                        {story.sprint && (
+                                            <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>
+                                                currently in {story.sprint.name}
+                                            </span>
+                                        )}
+                                    </div>
+                                </div>
+                            </label>
+                        ))}
+                    </div>
+                )}
+            </Dialog>
         </motion.div>
     );
 };
