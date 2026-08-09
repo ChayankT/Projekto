@@ -8,6 +8,7 @@ import { useToast } from '../context/ToastContext';
 import { useDataSync } from '../context/DataSyncContext';
 import { Dialog, Input, Dropdown, Badge, Skeleton } from '../components/ui';
 import { TextArea } from '../components/ui/Input';
+import CommentsSection from '../components/CommentsSection';
 import useHotkey from '../hooks/useHotkey';
 
 const TASK_STATUS = ['active', 'in_progress', 'completed'];
@@ -258,6 +259,12 @@ const StoryDetail = () => {
                 </div>
             </DragDropContext>
 
+            {/* Story-level comments — context on why this story moved or
+                changed, visible to anyone who opens it. */}
+            <div style={{ marginTop: 'var(--space-6)' }}>
+                <CommentsSection entityType="story" entityId={id} />
+            </div>
+
             {/* Create / Edit Task Dialog */}
             <Dialog
                 open={showModal}
@@ -305,6 +312,15 @@ const StoryDetail = () => {
                         options={users.map(u => ({ value: u._id, label: u.name }))}
                     />
                 </form>
+
+                {/* Comments only make sense once the task exists — a
+                    brand-new task being created has nothing to comment on
+                    yet. */}
+                {editTask && (
+                    <div style={{ marginTop: 'var(--space-5)', paddingTop: 'var(--space-5)', borderTop: '1px solid var(--border-subtle)' }}>
+                        <CommentsSection entityType="task" entityId={editTask._id} />
+                    </div>
+                )}
             </Dialog>
         </div>
     );
