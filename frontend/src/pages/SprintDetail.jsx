@@ -1,14 +1,17 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
-import { getSprint, getSprintBurndown, updateSprint, updateStory, getStories } from '../api/client';
+import { getSprint, getSprintBurndown, updateSprint, updateStory, createStory, getStories } from '../api/client';
+import { useApp } from '../context/AppContext';
 import { useToast } from '../context/ToastContext';
 import { useDataSync } from '../context/DataSyncContext';
-import { Badge, Skeleton, Card, Dialog, EmptyState } from '../components/ui';
+import { Badge, Skeleton, Card, Dialog, Input, Dropdown, EmptyState } from '../components/ui';
+import { TextArea } from '../components/ui/Input';
 import BurndownChart from '../components/BurndownChart';
 import { motion } from 'framer-motion';
 import { ChevronRight, Target, Calendar, Play, CheckCircle2, TrendingDown, Layers, LogIn, ListChecks, ChevronDown, ChevronUp, Plus } from 'lucide-react';
 
+const PRIORITY = ['low', 'medium', 'high'];
 const STATUS = ['active', 'in_progress', 'completed'];
 const STATUS_LABELS = { active: 'Active', in_progress: 'In Progress', completed: 'Completed' };
 const STATUS_COLORS = { active: 'var(--accent-primary)', in_progress: 'var(--color-warning)', completed: 'var(--color-success)' };
@@ -28,6 +31,7 @@ const buildCols = (stories) => {
 const SprintDetail = () => {
     const { id, sprintId } = useParams();
     const navigate = useNavigate();
+    const { users, activeUserId } = useApp();
     const { addToast } = useToast();
     const { storyVersion, taskVersion, notifyStoriesChanged, notifyTasksChanged } = useDataSync();
     const [sprint, setSprint] = useState(null);
@@ -40,6 +44,8 @@ const SprintDetail = () => {
     const [loadingEligible, setLoadingEligible] = useState(false);
     const [selectedStoryIds, setSelectedStoryIds] = useState([]);
     const [addingStories, setAddingStories] = useState(false);
+    const [showCreateModal, setShowCreateModal] = useState(false);
+    const [createForm, setCreateForm] = useState({ title: '', description: '', priority: 'medium', status: 'active', assignee: '', storyPoints: 1, tags: '' });
 
     const toggleExpanded = (colId) => setExpandedCols(prev => ({ ...prev, [colId]: !prev[colId] }));
 
@@ -163,6 +169,32 @@ const SprintDetail = () => {
         }
     };
 
+    // Create a brand-new story directly in this sprint, preset to whichever
+    // column's "+" was clicked — same pattern as the Project backlog board
+    // and a story's task board.
+    const openCreate = (status = 'active') => {
+        setCreateForm({ title: '', description: '', priority: 'medium', status, assignee: activeUserId || '', storyPoints: 1, tags: '' });
+        setShowCreateModal(true);
+    };
+
+    const handleCreateSubmit = async (e) => {
+        e?.preventDefault();
+        try {
+            const tags = createForm.tags.split(',').map(t => t.trim()).filter(Boolean);
+            const payload = { ...createForm, project: id, sprint: sprintId, storyPoints: Number(createForm.storyPoints) || 0, tags };
+            await createStory(payload);
+            addToast('Story created');
+            setShowCreateModal(false);
+            notifyStoriesChanged();
+            // A story created directly as completed cascades to complete its
+            // tasks too (none yet, but keep task-dependent views in sync).
+            if (payload.status === 'completed') notifyTasksChanged();
+            load();
+        } catch (err) {
+            addToast(err.response?.data?.message || 'Failed to create story', 'error');
+        }
+    };
+
     if (loading) return (
         <div style={{ padding: 'var(--space-8)' }}>
             <Skeleton variant="text" width="160px" />
@@ -267,6 +299,11 @@ const SprintDetail = () => {
                                         <h3 style={{ color }}>{STATUS_LABELS[colId]}</h3>
                                         <span className="kanban-col-count">{stories.length}</span>
                                     </div>
+                                    {sprint.status !== 'completed' && (
+                                        <button className="kanban-add-btn" onClick={() => openCreate(colId)} title={`Add to ${STATUS_LABELS[colId]}`}>
+                                            <Plus size={15} />
+                                        </button>
+                                    )}
                                 </div>
                                 <Droppable droppableId={colId}>
                                     {(provided, snapshot) => (
@@ -276,10 +313,17 @@ const SprintDetail = () => {
                                             {...provided.droppableProps}
                                         >
                                             {stories.length === 0 && !snapshot.isDraggingOver && (
-                                                <div className="kanban-empty-col">
-                                                    <Icon size={20} style={{ opacity: 0.4 }} />
-                                                    <span>No stories here.</span>
-                                                </div>
+                                                sprint.status !== 'completed' ? (
+                                                    <div className="kanban-empty-col" onClick={() => openCreate(colId)}>
+                                                        <Icon size={20} style={{ opacity: 0.4 }} />
+                                                        <span>No stories yet.<br />Click to add one.</span>
+                                                    </div>
+                                                ) : (
+                                                    <div className="kanban-empty-col">
+                                                        <Icon size={20} style={{ opacity: 0.4 }} />
+                                                        <span>No stories here.</span>
+                                                    </div>
+                                                )
                                             )}
                                             {stories.map((story, index) => {
                                                 const hidden = !expandedCols[colId] && index >= VISIBLE_CARD_COUNT;
@@ -351,6 +395,72 @@ const SprintDetail = () => {
                     </p>
                 )}
             </Card>
+
+            {/* Create Story Dialog — new story, preset to this sprint and to
+                whichever column's "+" was clicked */}
+            <Dialog
+                open={showCreateModal}
+                title="New User Story"
+                onClose={() => setShowCreateModal(false)}
+                footer={<>
+                    <button className="btn btn-secondary" onClick={() => setShowCreateModal(false)}>Cancel</button>
+                    <button className="btn btn-primary" onClick={handleCreateSubmit}>Create Story</button>
+                </>}
+            >
+                <form onSubmit={handleCreateSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
+                    <Input
+                        label="Story Title"
+                        required
+                        value={createForm.title}
+                        onChange={e => setCreateForm({ ...createForm, title: e.target.value })}
+                        placeholder="As a user, I want to..."
+                    />
+                    <TextArea
+                        label="Description"
+                        value={createForm.description}
+                        onChange={e => setCreateForm({ ...createForm, description: e.target.value })}
+                        placeholder="Acceptance criteria, notes..."
+                        rows={3}
+                    />
+                    <div className="form-row">
+                        <Dropdown
+                            label="Priority"
+                            value={createForm.priority}
+                            onChange={e => setCreateForm({ ...createForm, priority: e.target.value })}
+                            options={PRIORITY.map(p => ({ value: p, label: p }))}
+                        />
+                        <Dropdown
+                            label="Status"
+                            value={createForm.status}
+                            onChange={e => setCreateForm({ ...createForm, status: e.target.value })}
+                            options={STATUS.map(s => ({ value: s, label: STATUS_LABELS[s] }))}
+                        />
+                    </div>
+                    <div className="form-row">
+                        <Dropdown
+                            label="Assignee"
+                            value={createForm.assignee}
+                            onChange={e => setCreateForm({ ...createForm, assignee: e.target.value })}
+                            placeholder="Unassigned"
+                            options={users.map(u => ({ value: u._id, label: u.name }))}
+                        />
+                        <Input
+                            label="Story Points"
+                            type="number"
+                            min="0"
+                            step="1"
+                            value={createForm.storyPoints}
+                            onChange={e => setCreateForm({ ...createForm, storyPoints: e.target.value })}
+                        />
+                    </div>
+                    <Input
+                        label="Tags"
+                        value={createForm.tags}
+                        onChange={e => setCreateForm({ ...createForm, tags: e.target.value })}
+                        placeholder="e.g. frontend, bug, needs-design (comma separated)"
+                    />
+                </form>
+            </Dialog>
 
             {/* Add Story Dialog */}
             <Dialog
