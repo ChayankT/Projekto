@@ -116,3 +116,7 @@ the full keyboard shortcut list.
 - **Frontend loads but no data appears** — confirm the backend is running and reachable at the URL
   the frontend expects (`VITE_API_URL`, or the `http://localhost:5000/api` default).
 - **Port 5000 already in use** — change `PORT` in `backend/.env` and update `VITE_API_URL` to match.
+
+## DEMO
+
+-LINK: https://projekto-flax.vercel.app/
