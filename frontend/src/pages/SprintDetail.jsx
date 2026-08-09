@@ -9,7 +9,7 @@ import { Badge, Skeleton, Card, Dialog, Input, Dropdown, EmptyState } from '../c
 import { TextArea } from '../components/ui/Input';
 import BurndownChart from '../components/BurndownChart';
 import { motion } from 'framer-motion';
-import { ChevronRight, Target, Calendar, Play, CheckCircle2, TrendingDown, Layers, LogIn, ListChecks, ChevronDown, ChevronUp, Plus } from 'lucide-react';
+import { ChevronRight, Target, Calendar, Play, CheckCircle2, TrendingDown, Layers, LogIn, ListChecks, ChevronDown, ChevronUp, Plus, Gauge, Edit2, AlertTriangle } from 'lucide-react';
 
 const PRIORITY = ['low', 'medium', 'high'];
 const STATUS = ['active', 'in_progress', 'completed'];
@@ -46,6 +46,9 @@ const SprintDetail = () => {
     const [addingStories, setAddingStories] = useState(false);
     const [showCreateModal, setShowCreateModal] = useState(false);
     const [createForm, setCreateForm] = useState({ title: '', description: '', priority: 'medium', status: 'active', assignee: '', storyPoints: 1, tags: '' });
+    const [showCapacityModal, setShowCapacityModal] = useState(false);
+    const [capacityInput, setCapacityInput] = useState('');
+    const [savingCapacity, setSavingCapacity] = useState(false);
 
     const toggleExpanded = (colId) => setExpandedCols(prev => ({ ...prev, [colId]: !prev[colId] }));
 
@@ -195,6 +198,27 @@ const SprintDetail = () => {
         }
     };
 
+    const openCapacityEdit = () => {
+        setCapacityInput(sprint.capacity != null ? String(sprint.capacity) : '');
+        setShowCapacityModal(true);
+    };
+
+    const handleCapacitySubmit = async (e) => {
+        e?.preventDefault();
+        setSavingCapacity(true);
+        try {
+            const capacity = capacityInput === '' ? null : Number(capacityInput);
+            const res = await updateSprint(sprintId, { capacity });
+            setSprint(prev => ({ ...prev, capacity: res.data.capacity }));
+            addToast('Capacity updated');
+            setShowCapacityModal(false);
+        } catch (err) {
+            addToast(err.response?.data?.message || 'Failed to update capacity', 'error');
+        } finally {
+            setSavingCapacity(false);
+        }
+    };
+
     if (loading) return (
         <div style={{ padding: 'var(--space-8)' }}>
             <Skeleton variant="text" width="160px" />
@@ -209,6 +233,13 @@ const SprintDetail = () => {
     const completedTasks = burndown?.completedTasks ?? 0;
     const remainingTasks = burndown?.remainingTasks ?? 0;
     const completionPercentage = burndown?.completionPercentage ?? 0;
+
+    // Story points committed to this sprint (all stories, any column) vs.
+    // the team's stated capacity — separate from the task-based burndown
+    // above, since capacity is a story-point concept.
+    const committedPoints = Object.values(cols).flat().reduce((sum, s) => sum + (s.storyPoints || 0), 0);
+    const hasCapacity = sprint.capacity != null;
+    const overCapacity = hasCapacity && committedPoints > sprint.capacity;
 
     return (
         <motion.div
@@ -281,6 +312,43 @@ const SprintDetail = () => {
                     <span className="sprint-points-value">{completionPercentage}%</span>
                     <span className="sprint-points-label">complete</span>
                 </div>
+            </div>
+
+            {/* Capacity vs. commitment — story points, not tasks. Warns when the
+                sprint is carrying more than the team said it could handle. */}
+            <div className="sprint-points-header" style={{ marginTop: 'var(--space-3)', borderColor: overCapacity ? 'var(--color-error-border)' : undefined }}>
+                <div className="sprint-points-stat">
+                    <Gauge size={15} />
+                    <span className="sprint-points-value" style={overCapacity ? { color: 'var(--color-error)' } : undefined}>{committedPoints}</span>
+                    <span className="sprint-points-label">points committed</span>
+                </div>
+                <div className="sprint-points-divider" />
+                {hasCapacity ? (
+                    <>
+                        <div className="sprint-points-stat">
+                            <span className="sprint-points-value">{sprint.capacity}</span>
+                            <span className="sprint-points-label">capacity</span>
+                        </div>
+                        {overCapacity && (
+                            <>
+                                <div className="sprint-points-divider" />
+                                <Badge variant="error">
+                                    <AlertTriangle size={11} style={{ marginRight: 3 }} />
+                                    {committedPoints - sprint.capacity} pts over capacity
+                                </Badge>
+                            </>
+                        )}
+                    </>
+                ) : (
+                    <span style={{ fontSize: 'var(--text-sm)', color: 'var(--text-tertiary)' }}>No capacity set</span>
+                )}
+                <button
+                    className="btn btn-ghost btn-sm"
+                    onClick={openCapacityEdit}
+                    style={{ marginLeft: 'auto' }}
+                >
+                    <Edit2 size={12} /> {hasCapacity ? 'Edit' : 'Set'} capacity
+                </button>
             </div>
 
             {/* Sprint board — the task list is the primary content of this page, so it
@@ -395,6 +463,35 @@ const SprintDetail = () => {
                     </p>
                 )}
             </Card>
+
+            {/* Edit Capacity Dialog */}
+            <Dialog
+                open={showCapacityModal}
+                title="Sprint Capacity"
+                onClose={() => setShowCapacityModal(false)}
+                footer={<>
+                    <button className="btn btn-secondary" onClick={() => setShowCapacityModal(false)}>Cancel</button>
+                    <button className="btn btn-primary" onClick={handleCapacitySubmit} disabled={savingCapacity}>
+                        {savingCapacity ? 'Saving…' : 'Save'}
+                    </button>
+                </>}
+            >
+                <form onSubmit={handleCapacitySubmit} style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
+                    <Input
+                        label="Team Capacity (story points)"
+                        type="number"
+                        min="0"
+                        step="1"
+                        value={capacityInput}
+                        onChange={e => setCapacityInput(e.target.value)}
+                        placeholder="Leave blank to clear"
+                        autoFocus
+                    />
+                    <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-tertiary)', margin: 0 }}>
+                        Currently {committedPoints} {committedPoints === 1 ? 'point' : 'points'} committed to this sprint.
+                    </p>
+                </form>
+            </Dialog>
 
             {/* Create Story Dialog — new story, preset to this sprint and to
                 whichever column's "+" was clicked */}
