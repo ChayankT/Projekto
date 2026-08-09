@@ -9,7 +9,7 @@ import { TextArea } from '../components/ui/Input';
 import useHotkey from '../hooks/useHotkey';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Edit2, Trash2, Archive, Plus, ChevronRight, User as UserIcon, Layers, LogIn, CheckCircle2, Rocket, Calendar, Target, BarChart3, Search, X } from 'lucide-react';
+import { Edit2, Trash2, Archive, Plus, ChevronRight, User as UserIcon, Layers, LogIn, CheckCircle2, Rocket, Calendar, Target, BarChart3, Search, X, AlertTriangle, Tag } from 'lucide-react';
 
 const PRIORITY = ['low', 'medium', 'high'];
 const STATUS = ['active', 'in_progress', 'completed'];
@@ -36,13 +36,14 @@ const ProjectDetail = () => {
     const [sprints, setSprints] = useState([]);
     const [velocity, setVelocity] = useState([]);
     const [showSprintModal, setShowSprintModal] = useState(false);
-    const [sprintForm, setSprintForm] = useState({ name: '', goal: '', startDate: '', endDate: '' });
+    const [sprintForm, setSprintForm] = useState({ name: '', goal: '', startDate: '', endDate: '', capacity: '' });
 
     // Board filters (Kanban/backlog view)
     const [search, setSearch] = useState('');
     const [priorityFilter, setPriorityFilter] = useState('all');
     const [assigneeFilter, setAssigneeFilter] = useState('all');
     const [sprintFilter, setSprintFilter] = useState('backlog');
+    const [tagFilter, setTagFilter] = useState('');
 
     const buildColumns = (stories) => {
         const newStories = { active: [], in_progress: [], completed: [] };
@@ -76,18 +77,32 @@ const ProjectDetail = () => {
             } else if (assigneeFilter !== 'all') {
                 if ((s.assignee?._id || '') !== assigneeFilter) return false;
             }
+            if (tagFilter && !(s.tags || []).includes(tagFilter)) return false;
             if (q) {
                 const haystack = `${s.title} ${s.description || ''} ${(s.tags || []).join(' ')}`.toLowerCase();
                 if (!haystack.includes(q)) return false;
             }
             return true;
         });
-    }, [allStories, sprintFilter, priorityFilter, assigneeFilter, search]);
+    }, [allStories, sprintFilter, priorityFilter, assigneeFilter, tagFilter, search]);
+
+    // Every distinct tag currently in use across the project's stories,
+    // regardless of the active filters — so the chip bar doesn't shrink out
+    // from under you as soon as you filter down to one tag.
+    const allTags = useMemo(() => {
+        const set = new Set();
+        allStories.forEach(s => (s.tags || []).forEach(t => set.add(t)));
+        return [...set].sort((a, b) => a.localeCompare(b));
+    }, [allStories]);
+
+    // Clicking a tag chip (on the filter bar or on a story card) toggles it:
+    // selecting the already-active tag clears the filter instead of no-op'ing.
+    const toggleTagFilter = (tag) => setTagFilter(prev => (prev === tag ? '' : tag));
 
     useEffect(() => { setStoriesState(buildColumns(visibleStories)); }, [visibleStories]);
 
-    const filtersActive = search.trim() !== '' || priorityFilter !== 'all' || assigneeFilter !== 'all' || sprintFilter !== 'backlog';
-    const clearFilters = () => { setSearch(''); setPriorityFilter('all'); setAssigneeFilter('all'); setSprintFilter('backlog'); };
+    const filtersActive = search.trim() !== '' || priorityFilter !== 'all' || assigneeFilter !== 'all' || sprintFilter !== 'backlog' || tagFilter !== '';
+    const clearFilters = () => { setSearch(''); setPriorityFilter('all'); setAssigneeFilter('all'); setSprintFilter('backlog'); setTagFilter(''); };
 
     const fetchSprints = async () => {
         try {
@@ -168,10 +183,15 @@ const ProjectDetail = () => {
             return;
         }
         try {
-            await createSprint({ ...sprintForm, project: id });
+            const payload = {
+                ...sprintForm,
+                project: id,
+                capacity: sprintForm.capacity === '' ? null : Number(sprintForm.capacity),
+            };
+            await createSprint(payload);
             addToast('Sprint created');
             setShowSprintModal(false);
-            setSprintForm({ name: '', goal: '', startDate: '', endDate: '' });
+            setSprintForm({ name: '', goal: '', startDate: '', endDate: '', capacity: '' });
             fetchSprints();
         } catch (err) {
             addToast(err.response?.data?.message || 'Failed to create sprint', 'error');
@@ -312,9 +332,9 @@ const ProjectDetail = () => {
                 </div>
 
                 {activeTab === 'backlog' && (
+                    <div style={{ margin: '0 0 var(--space-5)' }}>
                     <div style={{
                         display: 'flex', flexWrap: 'wrap', gap: 'var(--space-3)', alignItems: 'center',
-                        margin: '0 0 var(--space-5)',
                     }}>
                         <div style={{ position: 'relative', flex: '1 1 220px', maxWidth: 320 }}>
                             <Search
@@ -371,6 +391,26 @@ const ProjectDetail = () => {
                             </button>
                         )}
                     </div>
+
+                    {allTags.length > 0 && (
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-2)', alignItems: 'center', marginTop: 'var(--space-3)' }}>
+                            <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>
+                                <Tag size={12} /> Tags:
+                            </span>
+                            {allTags.map(tag => (
+                                <button
+                                    key={tag}
+                                    type="button"
+                                    className={`tag-chip ${tagFilter === tag ? 'tag-chip-active' : ''}`}
+                                    onClick={() => toggleTagFilter(tag)}
+                                    title={tagFilter === tag ? `Clear "${tag}" filter` : `Filter by "${tag}"`}
+                                >
+                                    {tag}
+                                </button>
+                            ))}
+                        </div>
+                    )}
+                    </div>
                 )}
 
                 {activeTab === 'sprints' && (
@@ -406,11 +446,17 @@ const ProjectDetail = () => {
                             const points = sprintStories.reduce((a, s) => a + (s.storyPoints || 0), 0);
                             const donePoints = sprintStories.reduce((a, s) => a + (s.status === 'completed' ? (s.storyPoints || 0) : 0), 0);
                             const pct = points > 0 ? Math.round((donePoints / points) * 100) : 0;
+                            const overCapacity = sprint.capacity != null && points > sprint.capacity;
                             return (
                                 <Card key={sprint._id} interactive onClick={() => navigate(`/projects/${id}/sprints/${sprint._id}`)}>
                                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                                         <Card.Title>{sprint.name}</Card.Title>
                                         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                            {overCapacity && (
+                                                <Badge variant="error" title={`${points} pts committed vs ${sprint.capacity} pts capacity`}>
+                                                    <AlertTriangle size={11} style={{ marginRight: 3 }} /> Over capacity
+                                                </Badge>
+                                            )}
                                             <Badge variant={sprint.status === 'active' ? 'active' : sprint.status === 'completed' ? 'completed' : 'info'}>{sprint.status}</Badge>
                                             <button
                                                 className="btn btn-ghost btn-sm"
@@ -433,8 +479,8 @@ const ProjectDetail = () => {
                                     <div className="sprint-progress-track" style={{ marginTop: 'var(--space-3)' }}>
                                         <div className="sprint-progress-fill" style={{ width: `${pct}%` }} />
                                     </div>
-                                    <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-secondary)', marginTop: 'var(--space-1)' }}>
-                                        {donePoints} / {points} points · {sprintStories.length} {sprintStories.length === 1 ? 'story' : 'stories'}
+                                    <div style={{ fontSize: 'var(--text-xs)', color: overCapacity ? 'var(--color-error)' : 'var(--text-secondary)', marginTop: 'var(--space-1)' }}>
+                                        {donePoints} / {points} points{sprint.capacity != null ? ` (capacity: ${sprint.capacity})` : ''} · {sprintStories.length} {sprintStories.length === 1 ? 'story' : 'stories'}
                                     </div>
                                 </Card>
                             );
@@ -508,7 +554,15 @@ const ProjectDetail = () => {
                                                                     {story.tags?.length > 0 && (
                                                                         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, paddingLeft: 10, marginBottom: 'var(--space-1_5)' }}>
                                                                             {story.tags.map(t => (
-                                                                                <Badge key={t} variant="info">{t}</Badge>
+                                                                                <Badge
+                                                                                    key={t}
+                                                                                    variant="info"
+                                                                                    className="badge-clickable"
+                                                                                    onClick={(e) => { e.stopPropagation(); toggleTagFilter(t); }}
+                                                                                    title={tagFilter === t ? `Clear "${t}" filter` : `Filter by "${t}"`}
+                                                                                >
+                                                                                    {t}
+                                                                                </Badge>
                                                                             ))}
                                                                         </div>
                                                                     )}
@@ -660,6 +714,15 @@ const ProjectDetail = () => {
                             onChange={e => setSprintForm({ ...sprintForm, endDate: e.target.value })}
                         />
                     </div>
+                    <Input
+                        label="Team Capacity (story points)"
+                        type="number"
+                        min="0"
+                        step="1"
+                        value={sprintForm.capacity}
+                        onChange={e => setSprintForm({ ...sprintForm, capacity: e.target.value })}
+                        placeholder="Optional — e.g. 20"
+                    />
                 </form>
             </Dialog>
         </motion.div>
