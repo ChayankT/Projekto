@@ -8,6 +8,11 @@ const SprintSchema = new mongoose.Schema(
         startDate: { type: Date, required: true },
         endDate: { type: Date, required: true },
         status: { type: String, enum: ['planned', 'active', 'completed'], default: 'planned' },
+        // Team capacity for this sprint, in story points. Optional — null
+        // means "not set", distinct from 0 (a deliberately empty sprint).
+        // Compared against the sum of committed stories' storyPoints so the
+        // UI can warn when a sprint is over-committed.
+        capacity: { type: Number, default: null, min: 0 },
     },
     { timestamps: true }
 );
