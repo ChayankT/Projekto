@@ -76,8 +76,19 @@ MongoDB is the datastore, accessed through Mongoose.
 {
   user: ObjectId (User),
   message: String,
-  taskId: ObjectId (Task),
+  taskId: ObjectId (Task, nullable — null for notifications that aren't about a specific task, e.g. a story assignment or a sprint starting/completing),
   isRead: Boolean (default: false),
+  timestamps: true
+}
+```
+
+### Comment
+```javascript
+{
+  entityType: [story|task],
+  entityId: ObjectId (UserStory or Task, depending on entityType — polymorphic, not a typed ref),
+  author: ObjectId (User),
+  body: String,
   timestamps: true
 }
 ```
