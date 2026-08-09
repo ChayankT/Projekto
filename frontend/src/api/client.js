@@ -52,3 +52,8 @@ export const getNotifications = (userId) => api.get(`/notifications?user=${userI
 export const getUnreadCount = (userId) => api.get(`/notifications/unread-count?user=${userId}`);
 export const markNotificationRead = (id) => api.put(`/notifications/${id}/read`);
 export const markAllNotificationsRead = (userId) => api.put('/notifications/mark-all-read', { user: userId });
+
+// Comments (on a story or task — entityType is 'story' | 'task')
+export const getComments = (entityType, entityId) => api.get(`/comments?entityType=${entityType}&entityId=${entityId}`);
+export const createComment = (data) => api.post('/comments', data);
+export const deleteComment = (id) => api.delete(`/comments/${id}`);
