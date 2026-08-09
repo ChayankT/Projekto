@@ -3,6 +3,7 @@ const router = express.Router();
 const Sprint = require('../models/Sprint');
 const UserStory = require('../models/UserStory');
 const Task = require('../models/Task');
+const Notification = require('../models/Notification');
 const { reopenProject } = require('../utils/cascadeUp');
 
 /**
@@ -243,6 +244,15 @@ router.put('/:id', async (req, res) => {
         if (req.body.capacity !== undefined && req.body.capacity !== null && req.body.capacity !== '' && Number(req.body.capacity) < 0) {
             return res.status(400).json({ message: 'Capacity cannot be negative' });
         }
+
+        // Read the current status before the update so the notification
+        // below only fires on an actual planned->active or ->completed
+        // transition, not on every unrelated edit (name, goal, capacity...)
+        // made while the sprint happens to already be in that status.
+        const existing = await Sprint.findById(req.params.id, 'status');
+        if (!existing) return res.status(404).json({ message: 'Sprint not found' });
+        const previousStatus = existing.status;
+
         const updated = await Sprint.findByIdAndUpdate(req.params.id, req.body, {
             new: true,
             runValidators: true,
@@ -267,6 +277,41 @@ router.put('/:id', async (req, res) => {
             // means the project has active work again — reopen it if it had
             // been marked completed or archived.
             await reopenProject(updated.project._id);
+        }
+
+        // Notify everyone with a story or task in this sprint when it starts
+        // or completes — reuses the existing generic Notification model
+        // (message + optional taskId), no schema change needed.
+        if (
+            req.body.status &&
+            req.body.status !== previousStatus &&
+            (req.body.status === 'active' || req.body.status === 'completed')
+        ) {
+            const participantStories = await UserStory.find(
+                { sprint: req.params.id, archived: { $ne: true } },
+                'assignee'
+            );
+            const storyIds = participantStories.map(s => s._id);
+            const participantTasks = await Task.find(
+                { story: { $in: storyIds }, archived: { $ne: true } },
+                'assignee'
+            );
+
+            const participantIds = new Set();
+            participantStories.forEach(s => { if (s.assignee) participantIds.add(s.assignee.toString()); });
+            participantTasks.forEach(t => { if (t.assignee) participantIds.add(t.assignee.toString()); });
+
+            if (participantIds.size > 0) {
+                const verb = req.body.status === 'active' ? 'started' : 'completed';
+                const icon = req.body.status === 'active' ? '🚀' : '✅';
+                await Notification.insertMany(
+                    [...participantIds].map(userId => ({
+                        user: userId,
+                        taskId: null,
+                        message: `${icon} Sprint "${updated.name}" has ${verb}.`,
+                    }))
+                );
+            }
         }
 
         res.json(updated);
