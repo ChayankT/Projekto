@@ -1153,6 +1153,46 @@ select {
   border-color: var(--color-info-border);
 }
 
+/* Badge used as a clickable filter trigger (e.g. story tags) — same look,
+   just signals it's interactive. */
+.badge-clickable {
+  cursor: pointer;
+  transition: transform var(--duration-fast), border-color var(--duration-fast);
+}
+
+.badge-clickable:hover {
+  border-color: var(--color-info);
+  transform: translateY(-1px);
+}
+
+/* Tag filter chips (Project backlog board) */
+.tag-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px var(--space-2_5);
+  font-size: var(--text-xs);
+  font-weight: var(--font-medium);
+  border-radius: var(--radius-full);
+  border: 1px solid var(--border-default);
+  background: var(--bg-surface-1);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all var(--duration-fast);
+  line-height: var(--leading-normal);
+}
+
+.tag-chip:hover {
+  border-color: var(--color-info);
+  color: var(--text-primary);
+}
+
+.tag-chip-active {
+  background: var(--color-info-subtle);
+  color: var(--color-info);
+  border-color: var(--color-info-border);
+  font-weight: var(--font-semibold);
+}
+
 /* Dot indicator inside badges */
 .badge-dot-indicator {
   width: 6px;
