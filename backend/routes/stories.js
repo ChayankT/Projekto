@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const UserStory = require('../models/UserStory');
 const Task = require('../models/Task');
+const Notification = require('../models/Notification');
 const { reopenProject, reopenSprint } = require('../utils/cascadeUp');
 
 /**
@@ -141,6 +142,16 @@ router.post('/', async (req, res) => {
             await Promise.all(reopenOps);
         }
 
+        // Being assigned a brand-new story is still an assignment — notify
+        // the assignee the same way an assignment *change* would (below).
+        if (saved.assignee) {
+            await Notification.create({
+                user: saved.assignee,
+                taskId: null,
+                message: `📌 You were assigned to story "${saved.title}".`,
+            });
+        }
+
         const populated = await UserStory.findById(saved._id)
             .populate('project', 'name')
             .populate('assignee', 'name email')
@@ -183,6 +194,14 @@ router.put('/:id', async (req, res) => {
         } else if (payload.status) {
             payload.completedAt = null;
         }
+
+        // Read the current assignee before the update so we can tell
+        // whether this request actually *changed* it (vs. just re-sending
+        // the same value, or editing an unrelated field like status/tags).
+        const existing = await UserStory.findById(req.params.id, 'assignee');
+        if (!existing) return res.status(404).json({ message: 'Story not found' });
+        const previousAssignee = existing.assignee ? existing.assignee.toString() : null;
+
         const updated = await UserStory.findByIdAndUpdate(req.params.id, payload, {
             new: true,
             runValidators: true,
@@ -191,6 +210,21 @@ router.put('/:id', async (req, res) => {
             .populate('assignee', 'name email')
             .populate('sprint', 'name status');
         if (!updated) return res.status(404).json({ message: 'Story not found' });
+
+        // Notify the newly-assigned person — only when this request
+        // actually changed the assignee to someone new, not on every save
+        // that happens to include the same assignee.
+        if (
+            Object.prototype.hasOwnProperty.call(payload, 'assignee') &&
+            updated.assignee &&
+            updated.assignee._id.toString() !== previousAssignee
+        ) {
+            await Notification.create({
+                user: updated.assignee._id,
+                taskId: null,
+                message: `📌 You were assigned to story "${updated.title}".`,
+            });
+        }
 
         // Completing a story cascades down: all of its tasks complete too.
         if (payload.status === 'completed') {
