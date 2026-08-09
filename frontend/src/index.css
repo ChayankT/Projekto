@@ -2241,6 +2241,25 @@ select {
   border-color: var(--border-strong);
 }
 
+/* The global `input { width: 100%; padding; border; background }` rule
+   above (meant for text/select/textarea) also matches type="checkbox" —
+   without this override it stretches the checkbox into a full-width
+   blank box and pushes the story title/badges out of the row. */
+.add-story-row input[type="checkbox"] {
+  appearance: auto;
+  width: 16px;
+  height: 16px;
+  min-width: 16px;
+  padding: 0;
+  margin: 0;
+  border: none;
+  border-radius: 0;
+  background: none;
+  flex-shrink: 0;
+  cursor: pointer;
+  accent-color: var(--accent-primary);
+}
+
 .notif-dot {
   width: 8px;
   height: 8px;
